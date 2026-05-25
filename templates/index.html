@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HYROX Analyzer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #222222;
+      --accent: #e8ff00;
+      --accent-dim: rgba(232, 255, 0, 0.08);
+      --text: #f0f0f0;
+      --muted: #555;
+      --user-bg: #1a1a1a;
+      --ai-bg: #111111;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 28px;
+      letter-spacing: 3px;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .logo-sub {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+      margin-left: auto;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Chat area */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Welcome state */
+    .welcome {
+      margin: auto;
+      text-align: center;
+      max-width: 480px;
+      animation: fadeIn 0.6s ease;
+    }
+
+    .welcome h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 48px;
+      letter-spacing: 4px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .welcome p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 28px;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .suggestion {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      text-align: left;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-radius: 2px;
+    }
+
+    .suggestion:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .suggestion::before {
+      content: '→ ';
+      font-family: 'DM Mono', monospace;
+      color: var(--muted);
+    }
+
+    .suggestion:hover::before {
+      color: var(--accent);
+    }
+
+    /* Messages */
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 800px;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .message-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 4px;
+    }
+
+    .message.user .message-label { color: var(--accent); opacity: 0.7; }
+
+    .message-bubble {
+      padding: 14px 18px;
+      border-radius: 2px;
+      font-size: 14px;
+      line-height: 1.7;
+      max-width: 640px;
+    }
+
+    .message.user .message-bubble {
+      background: var(--user-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .message.assistant .message-bubble {
+      background: var(--ai-bg);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--accent);
+      color: var(--text);
+    }
+
+    /* SQL badge */
+    .sql-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      background: #0a0a0a;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      border-radius: 2px;
+    }
+
+    .sql-badge:hover { border-color: var(--accent); color: var(--accent); }
+
+    .sql-preview {
+      display: none;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      background: #050505;
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      color: #888;
+      border-radius: 2px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-width: 640px;
+    }
+
+    .sql-preview.visible { display: block; }
+
+    .row-count {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      padding: 0 4px;
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+
+    .loading-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .loading-dots span {
+      width: 4px;
+      height: 4px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: blink 1.2s infinite;
+    }
+
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.2; }
+      40% { opacity: 1; }
+    }
+
+    /* Error */
+    .error-bubble {
+      background: rgba(255, 50, 50, 0.05);
+      border: 1px solid rgba(255, 50, 50, 0.2);
+      border-left: 2px solid #ff3232;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #ff6666;
+      border-radius: 2px;
+      max-width: 640px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* Input area */
+    #input-area {
+      padding: 20px 32px 28px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .input-wrapper {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      transition: border-color 0.15s;
+      border-radius: 2px;
+    }
+
+    .input-wrapper:focus-within {
+      border-color: var(--accent);
+    }
+
+    #user-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      resize: none;
+      max-height: 120px;
+      line-height: 1.6;
+    }
+
+    #user-input::placeholder { color: var(--muted); }
+
+    #send-btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity 0.15s;
+      border-radius: 2px;
+      font-size: 16px;
+    }
+
+    #send-btn:hover { opacity: 0.85; }
+    #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .input-hint {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 8px;
+      padding: 0 4px;
+    }
+
+    /* Markdown rendering inside assistant bubbles */
+    .message.assistant .message-bubble h2,
+    .message.assistant .message-bubble h3 {
+      font-family: 'Bebas Neue', sans-serif;
+      letter-spacing: 2px;
+      color: var(--accent);
+      margin: 14px 0 6px;
+    }
+
+    .message.assistant .message-bubble h2 { font-size: 18px; }
+    .message.assistant .message-bubble h3 { font-size: 15px; }
+
+    .message.assistant .message-bubble p { margin: 6px 0; }
+
+    .message.assistant .message-bubble ul,
+    .message.assistant .message-bubble ol {
+      padding-left: 18px;
+      margin: 6px 0;
+    }
+
+    .message.assistant .message-bubble li { margin: 3px 0; }
+
+    .message.assistant .message-bubble table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+
+    .message.assistant .message-bubble th {
+      background: #1a1a1a;
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .message.assistant .message-bubble td {
+      padding: 7px 12px;
+      border-bottom: 1px solid #1a1a1a;
+      color: var(--text);
+    }
+
+    .message.assistant .message-bubble tr:last-child td { border-bottom: none; }
+
+    .message.assistant .message-bubble code {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      background: #1a1a1a;
+      padding: 1px 5px;
+      border-radius: 2px;
+      color: #aaa;
+    }
+
+    .message.assistant .message-bubble strong { color: var(--accent); font-weight: 500; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">HYROX</div>
+    <div class="logo-sub">Data Analyzer</div>
+  </div>
+  <div class="status-dot"></div>
+</header>
+
+<div id="chat">
+  <div class="welcome" id="welcome">
+    <h2>Analyze</h2>
+    <p>Stell eine Frage zu den Hyrox-Daten.<br>92.374 Athleten · alle Splits · alle Kategorien</p>
+    <div class="suggestions">
+      <button class="suggestion" onclick="useSuggestion(this)">Wie ist die durchschnittliche Gesamtzeit bei Männern 40-44?</button>
+      <button class="suggestion" onclick="useSuggestion(this)">Welche Station ist bei Männern im Schnitt am langsamsten?</button>
+      <button class="suggestion" onclick="useSuggestion(this)">Vergleiche deutsche vs. britische Athleten in der Gesamtzeit</button>
+      <button class="suggestion" onclick="useSuggestion(this)">Top 10 schnellste Frauen overall</button>
+    </div>
+  </div>
+</div>
+
+<div id="input-area">
+  <div class="input-wrapper">
+    <textarea id="user-input" placeholder="Frag nach den Daten..." rows="1"></textarea>
+    <button id="send-btn" onclick="sendMessage()">↑</button>
+  </div>
+  <div class="input-hint">Enter zum Senden · Shift+Enter für neue Zeile</div>
+</div>
+
+<script>
+  marked.setOptions({ gfm: true, breaks: true });
+
+  const chatEl = document.getElementById('chat');
+  const inputEl = document.getElementById('user-input');
+  const sendBtn = document.getElementById('send-btn');
+
+  // Auto-resize textarea
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  function useSuggestion(btn) {
+    inputEl.value = btn.textContent.replace('→ ', '').trim();
+    inputEl.dispatchEvent(new Event('input'));
+    inputEl.focus();
+  }
+
+  function hideWelcome() {
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+  }
+
+  function appendMessage(role, content) {
+    hideWelcome();
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    label.textContent = role === 'user' ? 'Du' : 'Analyzer';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = content;
+
+    msg.appendChild(label);
+    msg.appendChild(bubble);
+    chatEl.appendChild(msg);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return msg;
+  }
+
+  function appendAssistantResponse(data) {
+    hideWelcome();
+    const msg = document.createElement('div');
+    msg.className = 'message assistant';
+
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    label.textContent = 'Analyzer';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.innerHTML = marked.parse(data.response);
+
+    // Row count
+    const rowCount = document.createElement('div');
+    rowCount.className = 'row-count';
+    rowCount.textContent = `${data.row_count} Zeilen`;
+
+    // SQL toggle
+    const sqlBadge = document.createElement('div');
+    sqlBadge.className = 'sql-badge';
+    sqlBadge.innerHTML = '⌗ SQL anzeigen';
+
+    const sqlPreview = document.createElement('pre');
+    sqlPreview.className = 'sql-preview';
+    sqlPreview.textContent = data.sql;
+
+    sqlBadge.onclick = () => {
+      sqlPreview.classList.toggle('visible');
+      sqlBadge.innerHTML = sqlPreview.classList.contains('visible') ? '⌗ SQL ausblenden' : '⌗ SQL anzeigen';
+    };
+
+    msg.appendChild(label);
+    msg.appendChild(bubble);
+    msg.appendChild(rowCount);
+    msg.appendChild(sqlBadge);
+    msg.appendChild(sqlPreview);
+    chatEl.appendChild(msg);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function appendLoading() {
+    hideWelcome();
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.id = 'loading';
+    loading.innerHTML = `
+      <div class="loading-dots">
+        <span></span><span></span><span></span>
+      </div>
+      Analysiere...
+    `;
+    chatEl.appendChild(loading);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function removeLoading() {
+    const loading = document.getElementById('loading');
+    if (loading) loading.remove();
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    appendMessage('user', text);
+    appendLoading();
+
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+
+      const data = await res.json();
+      removeLoading();
+
+      if (data.error) {
+        hideWelcome();
+        const errMsg = document.createElement('div');
+        errMsg.className = 'message assistant';
+        const label = document.createElement('div');
+        label.className = 'message-label';
+        label.textContent = 'Fehler';
+        const errBubble = document.createElement('div');
+        errBubble.className = 'error-bubble';
+        errBubble.textContent = data.error;
+        errMsg.appendChild(label);
+        errMsg.appendChild(errBubble);
+        chatEl.appendChild(errMsg);
+      } else {
+        appendAssistantResponse(data);
+      }
+    } catch (err) {
+      removeLoading();
+      appendMessage('assistant', 'Verbindungsfehler. Läuft der Flask-Server?');
+    }
+
+    sendBtn.disabled = false;
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+</script>
+
+</body>
+</html>
