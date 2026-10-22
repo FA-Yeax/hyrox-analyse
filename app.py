@@ -1,13 +1,27 @@
 from flask import Flask, request, jsonify, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
+import os
 import sqlite3
 import statistics
 import anthropic
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 load_dotenv()
 
 app = Flask(__name__)
 
+# Hinter einem Reverse Proxy (z.B. Caddy) die echte Client-IP aus X-Forwarded-For nehmen.
+# Nur aktivieren, wenn die App ausschließlich über den Proxy erreichbar ist –
+# sonst kann jeder den Header fälschen und das Rate-Limit umgehen.
+if os.getenv('TRUST_PROXY') == '1':
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# Begrenzt API-Kosten durch Missbrauch: Anfragen pro IP
+limiter = Limiter(get_remote_address, app=app, storage_uri='memory://')
+
 DB_PATH = 'hyrox.db'
+MAX_INPUT_LENGTH = 300
 client = anthropic.Anthropic()  # liest ANTHROPIC_API_KEY aus environment
 
 TIME_COLUMNS = (
@@ -83,13 +97,26 @@ def compute_time_stats(results):
 def index():
     return render_template('index.html')
 
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    return jsonify({"error": "Zu viele Anfragen. Bitte versuche es später noch einmal."}), 429
+
+
 @app.route('/query', methods=['POST'])
+@limiter.limit('10 per hour')
 def query():
-    user_input = request.json.get('message')
+    data = request.get_json(silent=True) or {}
+    user_input = data.get('message')
+    if not isinstance(user_input, str) or not user_input.strip():
+        return jsonify({"error": "Bitte gib eine Frage ein."}), 400
+    user_input = user_input.strip()
+    if len(user_input) > MAX_INPUT_LENGTH:
+        return jsonify({"error": f"Die Frage darf höchstens {MAX_INPUT_LENGTH} Zeichen lang sein."}), 400
 
     # Schritt 1: Claude generiert SQL
     sql_response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
+        thinking={"type": "between_tools"},  # kein Thinking, damit content[0] Text bleibt
         max_tokens=2000,
         messages=[{
             "role": "user",
@@ -124,7 +151,8 @@ WICHTIG:
     last_error = None
     for attempt in range(3):
         try:
-            conn = sqlite3.connect(DB_PATH)
+            # Nur lesend öffnen: generiertes SQL darf die Datenbank nicht verändern
+            conn = sqlite3.connect(f'file:{DB_PATH}?mode=ro', uri=True)
             cursor = conn.execute(sql)
             rows = cursor.fetchall()
             columns = [d[0] for d in cursor.description]
@@ -136,7 +164,8 @@ WICHTIG:
             print(f"SQL-Fehler (Versuch {attempt + 1}): {last_error}\nQuery: {sql}")
             if attempt < 2:
                 retry_response = client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model="claude-sonnet-5-5",
+                    thinking={"type": "between_tools"},  # kein Thinking, damit content[0] Text bleibt
                     max_tokens=2000,
                     messages=[{
                         "role": "user",
@@ -175,7 +204,8 @@ Gib nur das korrigierte Query zurück, kein Text drumrum, keine Backticks, kein 
 
     # Schritt 3: Claude interpretiert Ergebnis
     interpret_response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
+        thinking={"type": "between_tools"},  # kein Thinking, damit content[0] Text bleibt
         max_tokens=2000,
         messages=[{
             "role": "user",
@@ -203,4 +233,4 @@ Antworte auf Deutsch. Formatierungsregeln:
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=False)
