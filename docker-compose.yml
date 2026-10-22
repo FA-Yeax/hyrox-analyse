@@ -1,0 +1,9 @@
+services:
+  hyrox:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TRUST_PROXY=1
+    ports:
+      - "127.0.0.1:3001:8000"
