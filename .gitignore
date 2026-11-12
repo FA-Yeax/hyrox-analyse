@@ -1,5 +1,27 @@
-venv/
+# Secrets
 .env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
 __pycache__/
 *.pyc
+
+# Node / Vite
+node_modules/
+dist/
+
+# Databases (hyrox.db is the bundled dataset)
+*.db
+*.sqlite
+*.sqlite3
+!hyrox.db
+
+# OS / editor
+.DS_Store
+Thumbs.db
 *:Zone.Identifier
+.vscode/
+.idea/
